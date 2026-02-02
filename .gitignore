@@ -1,0 +1,63 @@
+# LXR Poker V2.0 - GitIgnore
+# Excludes build artifacts, dependencies, and temporary files
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE Files
+.vscode/
+.idea/
+*.sublime-*
+*.code-workspace
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary Files
+*.tmp
+*.temp
+*.cache
+/tmp/
+temp/
+
+# Node Modules (if using any tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build Output
+dist/
+build/
+out/
+
+# Environment Files
+.env
+.env.local
+.env.*.local
+
+# Test Coverage
+coverage/
+.nyc_output/
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# Documentation Build (if using generators)
+site/
+
+# Resource Specific
+stream/
+
+# User Config Overrides (optional)
+# config.local.lua
