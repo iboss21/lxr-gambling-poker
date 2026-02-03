@@ -533,14 +533,14 @@ function EndHand(tableId)
     
     for seat, player in pairs(table.players) do
         if player.status ~= 'folded' then
-            -- Evaluate hand (simplified - would need full poker hand evaluation)
-            local handRank = EvaluateHand(player.cards, table.communityCards)
+            -- Evaluate hand with proper poker hand evaluation
+            local handRank, handName = EvaluateHand(player.cards, table.communityCards)
             
             if handRank > highestRank then
                 highestRank = handRank
-                winners = {{seat = seat, player = player, rank = handRank}}
+                winners = {{seat = seat, player = player, rank = handRank, handName = handName}}
             elseif handRank == highestRank then
-                table.insert(winners, {seat = seat, player = player, rank = handRank})
+                table.insert(winners, {seat = seat, player = player, rank = handRank, handName = handName})
             end
         end
     end
@@ -561,11 +561,11 @@ function EndHand(tableId)
         -- Add money to player account
         Framework.AddMoney(winner.player.source, sharePerWinner, Config.Economy.moneyType)
         
-        -- Notify winner
+        -- Notify winner with hand name
         local winnerName = GetPlayerName(winner.player.source)
         for _, p in pairs(table.players) do
             TriggerClientEvent('lxr-poker:client:handResult', p.source, tableId, {
-                {seat = winner.seat, name = winnerName, amount = sharePerWinner, hand = 'high_card'}
+                {seat = winner.seat, name = winnerName, amount = sharePerWinner, hand = winner.handName or L('high_card')}
             }, table.pot)
         end
     end
@@ -582,16 +582,204 @@ function EndHand(tableId)
 end
 
 --[[
-    Evaluate poker hand (simplified)
-    @param holeCards table
-    @param communityCards table
-    @return number
+    Evaluate poker hand
+    @param holeCards table - Player's 2 hole cards
+    @param communityCards table - 5 community cards
+    @return number - Hand strength (higher is better)
+    @return string - Hand name (e.g., "Royal Flush", "Pair")
+    @return table - Best 5-card combination
+    
+    Hand Rankings (highest to lowest):
+    9 = Royal Flush
+    8 = Straight Flush
+    7 = Four of a Kind
+    6 = Full House
+    5 = Flush
+    4 = Straight
+    3 = Three of a Kind
+    2 = Two Pair
+    1 = One Pair
+    0 = High Card
 ]]
 function EvaluateHand(holeCards, communityCards)
-    -- This is a simplified placeholder
-    -- A full implementation would evaluate all 7 cards and return hand strength
-    -- For now, return a random value to simulate
-    return math.random(1, 10)
+    -- Hand rank constants for clarity
+    local HAND_ROYAL_FLUSH = 90000
+    local HAND_STRAIGHT_FLUSH = 80000
+    local HAND_FOUR_KIND = 70000
+    local HAND_FULL_HOUSE = 60000
+    local HAND_FLUSH = 50000
+    local HAND_STRAIGHT = 40000
+    local HAND_THREE_KIND = 30000
+    local HAND_TWO_PAIR = 20000
+    local HAND_ONE_PAIR = 10000
+    
+    -- Combine all 7 cards
+    local allCards = {}
+    for _, card in ipairs(holeCards or {}) do
+        table.insert(allCards, card)
+    end
+    for _, card in ipairs(communityCards or {}) do
+        table.insert(allCards, card)
+    end
+    
+    if #allCards < 5 then
+        return 0, L('high_card'), {}
+    end
+    
+    -- Convert rank strings to numeric values
+    local function GetRankValue(rank)
+        local ranks = {['2']=2, ['3']=3, ['4']=4, ['5']=5, ['6']=6, ['7']=7, 
+                      ['8']=8, ['9']=9, ['10']=10, J=11, Q=12, K=13, A=14}
+        return ranks[rank] or 0
+    end
+    
+    -- Sort cards by rank (descending)
+    table.sort(allCards, function(a, b)
+        return GetRankValue(a.rank) > GetRankValue(b.rank)
+    end)
+    
+    -- Helper function to check for flush (returns flush cards if found)
+    local function GetFlushCards(cards)
+        local suitCounts = {}
+        local suitCards = {}
+        
+        for _, card in ipairs(cards) do
+            if not suitCards[card.suit] then
+                suitCards[card.suit] = {}
+            end
+            table.insert(suitCards[card.suit], card)
+            suitCounts[card.suit] = #suitCards[card.suit]
+        end
+        
+        for suit, count in pairs(suitCounts) do
+            if count >= 5 then
+                -- Sort by rank descending
+                table.sort(suitCards[suit], function(a, b)
+                    return GetRankValue(a.rank) > GetRankValue(b.rank)
+                end)
+                return suitCards[suit]
+            end
+        end
+        
+        return nil
+    end
+    
+    -- Helper function to check for straight in a set of cards
+    local function GetStraightHigh(cards)
+        local values = {}
+        local valueSet = {}
+        
+        for _, card in ipairs(cards) do
+            local val = GetRankValue(card.rank)
+            if not valueSet[val] then
+                table.insert(values, val)
+                valueSet[val] = true
+            end
+        end
+        table.sort(values, function(a, b) return a > b end)
+        
+        -- Check for regular straight (5 consecutive cards)
+        for i = 1, #values - 4 do
+            if values[i] - values[i+4] == 4 then
+                return values[i]
+            end
+        end
+        
+        -- Check for wheel (A-2-3-4-5)
+        if valueSet[14] and valueSet[5] and valueSet[4] and valueSet[3] and valueSet[2] then
+            return 5 -- In a wheel, the 5 is the high card
+        end
+        
+        return nil
+    end
+    
+    -- Count rank occurrences
+    local rankCounts = {}
+    local rankList = {}
+    for _, card in ipairs(allCards) do
+        local val = GetRankValue(card.rank)
+        rankCounts[val] = (rankCounts[val] or 0) + 1
+        if rankCounts[val] == 1 then
+            table.insert(rankList, val)
+        end
+    end
+    
+    -- Sort by count then by rank
+    table.sort(rankList, function(a, b)
+        if rankCounts[a] ~= rankCounts[b] then
+            return rankCounts[a] > rankCounts[b]
+        end
+        return a > b
+    end)
+    
+    -- Check for flush
+    local flushCards = GetFlushCards(allCards)
+    local hasFlush = flushCards ~= nil
+    
+    -- Check for straight in all cards
+    local straightHigh = GetStraightHigh(allCards)
+    local hasStraight = straightHigh ~= nil
+    
+    -- Check for straight flush (straight within flush cards)
+    if hasFlush then
+        local straightFlushHigh = GetStraightHigh(flushCards)
+        if straightFlushHigh then
+            -- Royal Flush (A-high straight flush)
+            if straightFlushHigh == 14 then
+                return HAND_ROYAL_FLUSH + straightFlushHigh, L('royal_flush'), {}
+            end
+            -- Straight Flush
+            return HAND_STRAIGHT_FLUSH + straightFlushHigh, L('straight_flush'), {}
+        end
+    end
+    
+    -- Get the most common rank counts
+    local counts = {}
+    for _, val in ipairs(rankList) do
+        table.insert(counts, rankCounts[val])
+    end
+    
+    -- Four of a Kind
+    if counts[1] == 4 then
+        return HAND_FOUR_KIND + rankList[1] * 100 + rankList[2], L('four_of_a_kind'), {}
+    end
+    
+    -- Full House (Three of a kind + Pair)
+    if counts[1] == 3 and counts[2] == 2 then
+        return HAND_FULL_HOUSE + rankList[1] * 100 + rankList[2], L('full_house'), {}
+    end
+    
+    -- Flush (use top 5 cards from flush)
+    if hasFlush then
+        local score = HAND_FLUSH
+        for i = 1, math.min(5, #flushCards) do
+            score = score + GetRankValue(flushCards[i].rank) * (100 ^ (6 - i))
+        end
+        return score, L('flush'), {}
+    end
+    
+    -- Straight
+    if hasStraight then
+        return HAND_STRAIGHT + straightHigh, L('straight'), {}
+    end
+    
+    -- Three of a Kind
+    if counts[1] == 3 then
+        return HAND_THREE_KIND + rankList[1] * 100 + rankList[2], L('three_of_a_kind'), {}
+    end
+    
+    -- Two Pair
+    if counts[1] == 2 and counts[2] == 2 then
+        return HAND_TWO_PAIR + rankList[1] * 1000 + rankList[2] * 100 + rankList[3], L('two_pair'), {}
+    end
+    
+    -- One Pair
+    if counts[1] == 2 then
+        return HAND_ONE_PAIR + rankList[1] * 100 + rankList[2], L('one_pair'), {}
+    end
+    
+    -- High Card
+    return rankList[1] * 100 + rankList[2], L('high_card'), {}
 end
 
 -- ════════════════════════════════════════════════════════════════════════════════════════════

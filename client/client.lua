@@ -45,6 +45,7 @@ local spawnedProps = {}
 local isInPokerGame = false
 local currentAction = nil
 local turnTimer = 0
+local gameState = {} -- Store current game state (pot, players, community cards, etc.)
 
 -- ════════════════════════════════════════════════════════════════════════════════════════════
 -- █████ HELPER FUNCTIONS █████
@@ -89,9 +90,86 @@ end
     @param text string
 ]]
 local function ShowHelpNotification(text)
-    BeginTextCommandDisplayHelp('STRING')
-    AddTextComponentSubstringPlayerName(text)
-    EndTextCommandDisplayHelp(0, false, true, -1)
+    -- RedM-compatible help text display
+    local str = CreateVarString(10, 'LITERAL_STRING', text)
+    SetTextScale(0.35, 0.35)
+    SetTextColor(255, 255, 255, 255)
+    SetTextCentre(1)
+    DisplayText(str, 0.5, 0.95)
+end
+
+--[[
+    Draw poker HUD overlay
+    Shows: Pot, Player Chips, Community Cards, Current Bet
+]]
+local SUIT_SYMBOLS = {hearts='♥', diamonds='♦', clubs='♣', spades='♠'}
+
+local function DrawPokerHUD()
+    if not isAtTable or not isInPokerGame or not gameState then return end
+    
+    local yOffset = 0.05
+    
+    -- Draw pot amount (top center)
+    if gameState.pot and gameState.pot > 0 then
+        local potText = CreateVarString(10, 'LITERAL_STRING', 'Pot: $' .. gameState.pot)
+        SetTextScale(0.4, 0.4)
+        SetTextColor(255, 215, 0, 255) -- Gold color
+        SetTextCentre(1)
+        DisplayText(potText, 0.5, yOffset)
+        yOffset = yOffset + 0.03
+    end
+    
+    -- Draw current bet
+    if gameState.currentBet and gameState.currentBet > 0 then
+        local betText = CreateVarString(10, 'LITERAL_STRING', 'Current Bet: $' .. gameState.currentBet)
+        SetTextScale(0.35, 0.35)
+        SetTextColor(255, 255, 255, 200)
+        SetTextCentre(1)
+        DisplayText(betText, 0.5, yOffset)
+        yOffset = yOffset + 0.03
+    end
+    
+    -- Draw phase
+    if gameState.phase then
+        local phaseNames = {
+            preflop = 'Pre-Flop',
+            flop = 'Flop',
+            turn = 'Turn',
+            river = 'River',
+            showdown = 'Showdown'
+        }
+        local phaseText = CreateVarString(10, 'LITERAL_STRING', phaseNames[gameState.phase] or gameState.phase)
+        SetTextScale(0.3, 0.3)
+        SetTextColor(200, 200, 200, 200)
+        SetTextCentre(1)
+        DisplayText(phaseText, 0.5, yOffset)
+    end
+    
+    -- Draw player's chips (bottom left)
+    if gameState.players and currentSeat then
+        local player = gameState.players[currentSeat]
+        if player and player.chips then
+            local chipsText = CreateVarString(10, 'LITERAL_STRING', 'Your Chips: $' .. player.chips)
+            SetTextScale(0.35, 0.35)
+            SetTextColor(100, 255, 100, 255) -- Green
+            SetTextCentre(0)
+            DisplayText(chipsText, 0.02, 0.9)
+        end
+    end
+    
+    -- Draw community cards (center, below pot)
+    if gameState.communityCards and #gameState.communityCards > 0 then
+        local cardText = 'Community: '
+        for _, card in ipairs(gameState.communityCards) do
+            local suit = SUIT_SYMBOLS[card.suit] or card.suit
+            cardText = cardText .. card.rank .. suit .. ' '
+        end
+        local cardsStr = CreateVarString(10, 'LITERAL_STRING', cardText)
+        SetTextScale(0.35, 0.35)
+        SetTextColor(255, 255, 255, 255)
+        SetTextCentre(1)
+        DisplayText(cardsStr, 0.5, 0.15)
+    end
 end
 
 --[[
@@ -341,11 +419,11 @@ end
 
 -- Game state updates from server
 RegisterNetEvent('lxr-poker:client:updateGameState')
-AddEventHandler('lxr-poker:client:updateGameState', function(tableId, gameState)
+AddEventHandler('lxr-poker:client:updateGameState', function(tableId, newGameState)
     if currentTable ~= tableId then return end
     
     -- Update local game state
-    -- gameState includes: pot, currentBet, players, turn, phase, etc.
+    gameState = newGameState or {}
     
     if Config.Debug.enabled then
         print('[LXR Poker] Game state updated for table: ' .. tableId)
@@ -495,9 +573,10 @@ Citizen.CreateThread(function()
             
             -- Raise (opens input for amount)
             if IsControlJustPressed(0, Config.Keys.raise) then
-                -- TODO: Open raise amount input UI
-                -- For now, use default raise
-                PerformAction('raise', nil)
+                -- Use a simple increment system for RedM compatibility
+                -- Players can use default raise or all-in for full control
+                -- Future enhancement: Add RedM prompt system for amount selection
+                PerformAction('raise', nil) -- nil = use default raise (current bet + min raise)
             end
             
             -- Fold
@@ -514,6 +593,21 @@ Citizen.CreateThread(function()
             if IsControlJustPressed(0, Config.Keys.allIn) then
                 PerformAction('all_in')
             end
+        else
+            Wait(500) -- Reduce frequency when not in game
+        end
+    end
+end)
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- █████ HUD DISPLAY THREAD █████
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        
+        if isAtTable and isInPokerGame then
+            DrawPokerHUD()
         else
             Wait(500) -- Reduce frequency when not in game
         end
