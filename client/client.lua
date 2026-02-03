@@ -498,9 +498,23 @@ Citizen.CreateThread(function()
             
             -- Raise (opens input for amount)
             if IsControlJustPressed(0, Config.Keys.raise) then
-                -- TODO: Open raise amount input UI
-                -- For now, use default raise
-                PerformAction('raise', nil)
+                -- Open raise amount input
+                DisplayOnscreenKeyboard(1, "FMMC_KEY_TIP8", "", "", "", "", "", 64)
+                
+                while (UpdateOnscreenKeyboard() == 0) do
+                    Wait(0)
+                end
+                
+                if GetOnscreenKeyboardResult() then
+                    local input = GetOnscreenKeyboardResult()
+                    local raiseAmount = tonumber(input)
+                    
+                    if raiseAmount and raiseAmount > 0 then
+                        PerformAction('raise', raiseAmount)
+                    else
+                        Framework.Notify(nil, L('invalid_bet'), 'error', 3000)
+                    end
+                end
             end
             
             -- Fold
