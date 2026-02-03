@@ -89,9 +89,12 @@ end
     @param text string
 ]]
 local function ShowHelpNotification(text)
-    BeginTextCommandDisplayHelp('STRING')
-    AddTextComponentSubstringPlayerName(text)
-    EndTextCommandDisplayHelp(0, false, true, -1)
+    -- RedM-compatible help text display
+    local str = CreateVarString(10, 'LITERAL_STRING', text)
+    SetTextScale(0.35, 0.35)
+    SetTextColor(255, 255, 255, 255)
+    SetTextCentre(1)
+    DisplayText(str, 0.5, 0.95)
 end
 
 --[[
