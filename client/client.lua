@@ -102,6 +102,8 @@ end
     Draw poker HUD overlay
     Shows: Pot, Player Chips, Community Cards, Current Bet
 ]]
+local SUIT_SYMBOLS = {hearts='♥', diamonds='♦', clubs='♣', spades='♠'}
+
 local function DrawPokerHUD()
     if not isAtTable or not isInPokerGame or not gameState then return end
     
@@ -159,7 +161,7 @@ local function DrawPokerHUD()
     if gameState.communityCards and #gameState.communityCards > 0 then
         local cardText = 'Community: '
         for _, card in ipairs(gameState.communityCards) do
-            local suit = ({hearts='♥', diamonds='♦', clubs='♣', spades='♠'})[card.suit] or card.suit
+            local suit = SUIT_SYMBOLS[card.suit] or card.suit
             cardText = cardText .. card.rank .. suit .. ' '
         end
         local cardsStr = CreateVarString(10, 'LITERAL_STRING', cardText)
@@ -571,23 +573,10 @@ Citizen.CreateThread(function()
             
             -- Raise (opens input for amount)
             if IsControlJustPressed(0, Config.Keys.raise) then
-                -- Open raise amount input
-                DisplayOnscreenKeyboard(1, "FMMC_KEY_TIP8", "", "", "", "", "", 64)
-                
-                while (UpdateOnscreenKeyboard() == 0) do
-                    Wait(0)
-                end
-                
-                if GetOnscreenKeyboardResult() then
-                    local input = GetOnscreenKeyboardResult()
-                    local raiseAmount = tonumber(input)
-                    
-                    if raiseAmount and raiseAmount > 0 then
-                        PerformAction('raise', raiseAmount)
-                    else
-                        Framework.Notify(nil, L('invalid_bet'), 'error', 3000)
-                    end
-                end
+                -- Use a simple increment system for RedM compatibility
+                -- Players can use default raise or all-in for full control
+                -- Future enhancement: Add RedM prompt system for amount selection
+                PerformAction('raise', nil) -- nil = use default raise (current bet + min raise)
             end
             
             -- Fold
